@@ -1,5 +1,7 @@
 var express = require('express');
 var app = express();
+var server = require('http').createServer(app);
+var io = require('socket.io').listen(server);
 var bodyParser = require('body-parser');
 var methodOverride = require('method-override');
 
@@ -18,18 +20,19 @@ app.use(bodyParser.urlencoded({
 }));
 app.use(methodOverride('X-HTTP-Method-Override'));
 app.use(express.static(__dirname + '/public'));
+app.use(express.static(__dirname + '/node_modules'));
 
 mongoose.connect('mongodb://localhost:27017/spider_and_scrapper', {
     useNewUrlParser: true
 }, function (err) {
     if (err) throw err;
-    console.log('Successfully connected');
+    console.log('Connection to MongoDB successfull.');
 });
 
 // Initialize routes
-require('./app/routes')(app);
+require('./app/routes')(app, io);
 
 // Start the server
-app.listen(port);
+server.listen(port);
 console.log('Server started on the url: http://localhost:' + port + '/');
 exports = module.exports = app;

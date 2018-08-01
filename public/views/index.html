@@ -6,27 +6,169 @@
     <meta charset="UTF-8">
 
     <title>Spider and Scrapper</title>
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO"
+        crossorigin="anonymous">
+
+    <style>
+        body {
+            padding: 3%;
+        }
+
+        #start_form {
+            margin: 3% 0%;
+        }
+
+        .stat_val {
+            text-align: center;
+        }
+
+        .stat_row {
+            margin-bottom: 5%;
+        }
+    </style>
+
 </head>
 
 <body>
 
     <h1> Spider and Scrapper Dashboard</h1>
 
-    <form action="/parse" method="GET">
-        <input type="url" name="url" placeholder="Enter the URL here" />
-        <input type="submit" value="Start" />
+    <form id="start_form">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-10">
+                    <input type="url" class="form-control form-control-lg" name="url" id="url" placeholder="Enter the URL here" />
+                </div>
+                <div class="col-2">
+                    <input class="btn btn-primary btn-lg" type="submit" value="Start" />
+                </div>
+            </div>
+        </div>
     </form>
 
-    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.js"></script>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-4">
+                <div class="row stat_row">
+                    <div class="col">
+                        <p>Total URL's Parsed:</p>
+                        <span class="stat_val" id="total_url_parsed">0</span>
+                    </div>
+                    <div class="col">
+                        <p>Total URL's Queud:</p>
+                        <span class="stat_val" id="total_url_queued">0</span>
+                    </div>
+                </div>
+                <div class="row stat_row">
+                    <div class="col">
+                        <p>URL's Parsed: </p>
+                        <ul id="latest_url"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div id="curve_chart" style="width: 900px; height: 500px"></div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="/jquery/dist/jquery.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49"
+        crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy"
+        crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+        google.charts.load('current', {
+            'packages': ['corechart']
+        });
+
+        google.charts.setOnLoadCallback(drawChart);
+
+        var data = null;
+        var chart = null;
+        var options = null;
+
+        function drawChart() {
+            data = new google.visualization.DataTable();
+            data.addColumn('number', 'Minutes');
+            data.addColumn('number', 'Urls');
+            data.insertRows(0, [
+                [0, 0]
+            ]);
+
+            options = {
+                title: 'URLs parsed per minute',
+                curveType: 'function',
+                legend: {
+                    position: 'bottom'
+                }
+            };
+
+            chart = new google.visualization.LineChart(document.getElementById('curve_chart'));
+
+            chart.draw(data, options);
+        }
+    </script>
     <script>
-        var socket = io();
-        // socket.on('news', function (data) {
-        //     console.log(data);
-        //     socket.emit('my other event', {
-        //         my: 'data'
-        //     });
-        // });
-    </script> -->
+        var startTime = null;
+        var socket = io.connect('http://localhost:8080');
+
+        socket.on('connect', function (data) {
+            socket.emit('join', true);
+        });
+
+        socket.on('parseDone', function (data) {
+            alert(data);
+        });
+
+        socket.on('total_url_parsed', function (data1) {
+            if (data1) {
+                var q = parseInt($('#total_url_parsed').html()) + 1;
+                $('#total_url_parsed').html("" + q);
+                var currentTime = +new Date() - startTime;
+                currentTime = currentTime / 1000;
+                currentTime = currentTime / 60;
+                data.insertRows(0, [
+                    [currentTime, q]
+                ]);
+                chart.draw(data, options);
+            }
+        });
+
+        socket.on('total_url_queued', function (data) {
+            $('#total_url_queued').html(parseInt(data));
+        });
+
+        socket.on('latest_url', function (data) {
+            if (data) {
+                $('#latest_url').prepend('<li>' + data + '</li>');
+            }
+        });
+
+        $('form').submit(function (e) {
+            e.preventDefault();
+            $('#total_url_parsed').html(parseInt(0));
+            $('#total_url_queued').html(parseInt(0));
+            $('#latest_url').html("");
+            data = new google.visualization.DataTable();
+            data.addColumn('number', 'Minutes');
+            data.addColumn('number', 'Urls');
+            data.insertRows(0, [
+                [0, 0]
+            ]);
+            var url = $('#url').val();
+            if (url == '' || url == null) {
+                alert("Invalid URL");
+                return false;
+            }
+            startTime = +new Date();
+            socket.emit('parse', url);
+        });
+    </script>
 
 </body>
 

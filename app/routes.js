@@ -8,12 +8,41 @@ var allUrls = Array();
 var allUrlsHistory = Array();
 var sessionId = null;
 
-module.exports = function (app) {
+module.exports = function (app, io) {
 
     // Home Page
     app.get('/', function (req, res) {
-        // Return static home page file
         res.sendFile(path.join(__dirname + '/../public/views/index.html'));
+    });
+
+    // Handle Client response
+    io.on('connection', function (client) {
+        console.log('New Client connected..');
+
+        client.on('join', function (dt) {
+            if (dt) {
+                // process.exit();
+            }
+        });
+
+        client.on('parse', function (url) {
+
+            console.log("URL to parse: " + url);
+
+            allUrls = [];
+            allUrlsHistory = [];
+            if (url[url.length - 1] === '/') {
+                url = url.substring(0, url.length - 1)
+            }
+            allUrls.push(url);
+            allUrlsHistory.push(url);
+            sessionId = Math.random().toString(36).substring(7);
+            parseAsync(client, function () {
+                client.emit('parseDone', 'Operation Completed Successfully');
+            });
+
+        });
+
     });
 
     function getDomainByURL(url) {
@@ -24,9 +53,7 @@ module.exports = function (app) {
         return url;
     }
 
-    function insertUnique(url, cb) {
-
-        console.log('insertUnique');
+    function insertUnique(url, client, cb) {
 
         RecordList.findOne({
                 sessionId: sessionId
@@ -38,48 +65,52 @@ module.exports = function (app) {
                     if (!doc) {
                         var recordList = new RecordList({
                             sessionId: sessionId,
-                            list: []
+                            list: [url]
                         });
                         recordList.save(function (err) {
                             if (err) {
                                 throw err;
                             }
-                        });
-                    }
-
-                    RecordList.findOneAndUpdate({
-                            sessionId: sessionId
-                        }, {
-                            "$push": {
-                                "list": url
-                            }
-                        },
-                        function (err, doc) {
-                            if (err) {
-                                throw err;
-                            }
                             cb(url);
-                        }
-                    );
-
+                        });
+                    } else {
+                        RecordList.findOneAndUpdate({
+                                sessionId: sessionId
+                            }, {
+                                "$push": {
+                                    "list": url
+                                }
+                            },
+                            function (err, doc) {
+                                if (err) {
+                                    throw err;
+                                }
+                                cb(url);
+                            }
+                        );
+                    }
                 }
             }
         );
 
     }
 
-    function parseAsync(cb) {
+    function parseAsync(client, cb) {
 
-        console.log("allUrls.length: " + allUrls.length);
         if (allUrls.length == 0) {
-            // All queries complete
+            client.emit('total_url_queued', 0);
             cb();
             return;
         }
 
+        client.emit('total_url_queued', allUrls.length);
+
         var url = allUrls.pop();
 
-        insertUnique(url, function (url) {
+        insertUnique(url, client, function (url) {
+
+            client.emit('latest_url', url);
+
             const options = {
                 uri: url,
                 transform: function (body) {
@@ -87,21 +118,19 @@ module.exports = function (app) {
                 }
             };
 
-            console.log(url);
             currentDomainName = getDomainByURL(url);
 
             rp(options)
                 .then(($) => {
+                    client.emit('total_url_parsed', true);
                     $('a').each(function (i, elem) {
                         var q = elem.attribs.href;
                         if (q && q != "") {
                             if (q.indexOf('http') <= -1 && q.indexOf('www') <= -1) {
                                 // Relative Urls
                             } else {
-                                // Absolute Urls
 
                                 if (currentDomainName === getDomainByURL(q)) {
-                                    // URLs on same domain
 
                                     if (q[q.length - 1] === '/') {
                                         q = q.substring(0, q.length - 1)
@@ -111,36 +140,21 @@ module.exports = function (app) {
                                         allUrls.push(q);
                                         allUrlsHistory.push(q);
                                     }
+
                                 }
 
                             }
                         }
                     });
-                    parseAsync(cb);
+                    parseAsync(client, cb);
                 })
                 .catch((err) => {
+                    client.emit('total_url_parsed', true);
                     console.log("Error URL: " + url);
-                    // console.log(err);
-                    parseAsync(cb);
+                    parseAsync(client, cb);
                 });
         });
 
     }
-
-    // Home Page
-    app.get('/parse', function (req, res) {
-
-        console.log("URL: " + req.query.url);
-
-        allUrls = [];
-        allUrlsHistory = [];
-        allUrls.push(req.query.url);
-        allUrlsHistory.push(req.query.url);
-        sessionId = Math.random().toString(36).substring(7);
-        parseAsync(function () {
-            res.json('Done');
-        });
-
-    });
 
 };
